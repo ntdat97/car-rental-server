@@ -92,12 +92,12 @@ Future<Response> registerHandler(Request request) async {
 
   final result = await dbService.query(
     'INSERT INTO Users (username, password_hash, created_at) VALUES (?, ?, ?)',
-    [reqBody.username, hashedPassword, now.toIso8601String()]
+    [reqBody.username, hashedPassword, now]
   );
 
   final userId = result.insertId; // This gets the auto-generated ID
 
-  return Response.ok(json.encode({'message': 'User registered', 'userId': userId}));
+  return Response.ok(json.encode({'message': 'User registered', 'User_ID': userId}));
 }
 
 Future<Response> loginHandler(Request request) async {
@@ -118,7 +118,7 @@ Future<Response> loginHandler(Request request) async {
   }
 
   final results = await dbService.query(
-    'SELECT id, password_hash FROM Users WHERE username = ?',
+    'SELECT User_ID, password_hash FROM Users WHERE username = ?',
     [reqBody.username]
   );
 
@@ -135,7 +135,7 @@ Future<Response> loginHandler(Request request) async {
   // Issue a token valid for a day
   final jwtToken = JWT({
     'username': reqBody.username,
-    'userId': userFromDB['id']
+    'User_ID': userFromDB['User_ID']
   }).sign(
     jwtSecretKey,
     expiresIn: const Duration(days: 1),
