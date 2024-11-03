@@ -2,6 +2,7 @@ import 'package:shelf/shelf.dart';
 import '../services/service_locator.dart';
 import 'dart:convert';
 import '../models/rental_history_dto.dart';
+import '../models/car_rental_registration_dto.dart';
 
 Response indexHandler(Request request) {
   return Response.ok('Welcome to Car Rental Service');
@@ -86,5 +87,72 @@ Future<Response> getRentalHistoryHandler(Request request) async {
   } catch (e) {
     print('Error fetching rental history: $e');
     return Response.internalServerError(body: 'Error fetching rental history');
+  }
+}
+
+Future<Response> createRentalRegistrationHandler(Request request) async {
+  final userInfo = request.context['user'] as Map<String, dynamic>?;
+  
+  if (userInfo == null) {
+    return Response.unauthorized('User not authenticated');
+  }
+
+  try {
+    final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+    final rentalForm = CarRentalRegistrationDto.fromJson(body);
+
+    // Verify if the car exists and is available
+    final carResults = await serviceLocator.databaseService.query(
+      'SELECT Status FROM cars WHERE Car_ID = ?',
+      [rentalForm.carId]
+    );
+
+    if (carResults.isEmpty) {
+      return Response.badRequest(body: 'Car not found');
+    }
+
+    if (carResults.first['Status'] != 'Available') {
+      return Response.badRequest(body: 'Car is not available for rental');
+    }
+
+    // Insert the rental registration
+    final result = await serviceLocator.databaseService.query(
+      '''
+      INSERT INTO carrentalregistrationform 
+      (StartDate, PickupTime, EndDate, ReturnTime, Status, User_ID, Car_ID, PaymentMethod, TotalAmount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        rentalForm.startDate,
+        rentalForm.pickupTime,
+        rentalForm.endDate,
+        rentalForm.returnTime,
+        rentalForm.status,
+        rentalForm.userId,
+        rentalForm.carId,
+        rentalForm.paymentMethod,
+        rentalForm.totalAmount,
+      ]
+    );
+
+    // Update car status to 'Reserved'
+    await serviceLocator.databaseService.query(
+      'UPDATE cars SET Status = ? WHERE Car_ID = ?',
+      ['Reserved', rentalForm.carId]
+    );
+
+    return Response.ok(
+      json.encode({
+        'message': 'Rental registration created successfully',
+        'registration_id': result.insertId
+      }),
+      headers: {'content-type': 'application/json'}
+    );
+  } catch (e) {
+    print('Error creating rental registration: $e');
+    return Response.internalServerError(
+      body: json.encode({'error': 'Error creating rental registration'}),
+      headers: {'content-type': 'application/json'}
+    );
   }
 }

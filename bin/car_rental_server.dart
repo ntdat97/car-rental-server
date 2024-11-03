@@ -4,6 +4,7 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:car_rental_server/routes/root-routes.dart';
 import 'package:car_rental_server/services/service_locator.dart';
+import 'package:firebase_admin/firebase_admin.dart';
 
 void main() async {
   // Load environment variables
@@ -22,7 +23,12 @@ void main() async {
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
   print('Server running on $host:${server.port}');
-
+  var credential = Credentials.applicationDefault();
+credential ??= await Credentials.login();
+  // Initialize Firebase Admin
+  await FirebaseAdmin.instance.initializeApp(AppOptions(
+      credential: credential,
+      projectId: env['FIREBASE_PROJECT_ID'] ?? ''));
   // Ensure the database connection is closed when the server shuts down
   ProcessSignal.sigint.watch().first.then((_) async {
     await serviceLocator.databaseService.close();

@@ -91,11 +91,11 @@ Future<Response> registerHandler(Request request) async {
   final now = DateTime.now().toUtc();
 
   final result = await dbService.query(
-    'INSERT INTO Users (username, password_hash, created_at) VALUES (?, ?, ?)',
+    'INSERT INTO Users (username, password_hash, RegistrationDate) VALUES (?, ?, ?)',
     [reqBody.username, hashedPassword, now]
   );
 
-  final userId = result.insertId; // This gets the auto-generated ID
+  final userId = result.insertId;
 
   return Response.ok(json.encode({'message': 'User registered', 'User_ID': userId}));
 }
@@ -123,13 +123,13 @@ Future<Response> loginHandler(Request request) async {
   );
 
   if (results.isEmpty) {
-    return Response.unauthorized('Invalid user credentials');
+    return Response.badRequest(body: 'Invalid user credentials');
   }
 
   final userFromDB = results.first;
   final passwordMatches = BCrypt.checkpw(reqBody.password, userFromDB['password_hash']);
   if (!passwordMatches) {
-    return Response.unauthorized('Invalid user credentials');
+    return Response.badRequest(body: 'Invalid user credentials');
   }
 
   // Issue a token valid for a day
@@ -145,4 +145,52 @@ Future<Response> loginHandler(Request request) async {
     jsonEncode({'token': jwtToken}),
     headers: {HttpHeaders.contentTypeHeader: 'application/json'},
   );
+}
+
+Future<Response> changePasswordHandler(Request request) async {
+  final userInfo = request.context['user'] as Map<String, dynamic>?;
+  if (userInfo == null) {
+    return Response.unauthorized('User not authenticated');
+  }
+
+  final username = userInfo['username'] as String;
+
+  try {
+    final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+    final oldPassword = body['oldPassword'] as String?;
+    final newPassword = body['newPassword'] as String?;
+
+    if (oldPassword == null || newPassword == null) {
+      return Response.badRequest(body: 'Old password and new password are required');
+    }
+
+    // Verify old password
+    final results = await dbService.query(
+      'SELECT password_hash FROM Users WHERE username = ?',
+      [username]
+    );
+
+    if (results.isEmpty) {
+      return Response.notFound('User not found');
+    }
+
+    final storedHash = results.first['password_hash'] as String;
+    if (!BCrypt.checkpw(oldPassword, storedHash)) {
+      return Response.badRequest(body: 'Incorrect old password');
+    }
+
+    // Hash new password
+    final newHashedPassword = BCrypt.hashpw(newPassword, BCrypt.gensalt());
+
+    // Update password in database
+    await dbService.query(
+      'UPDATE Users SET password_hash = ? WHERE username = ?',
+      [newHashedPassword, username]
+    );
+
+    return Response.ok(json.encode({'message': 'Password changed successfully'}));
+  } catch (e) {
+    print('Error changing password: $e');
+    return Response.internalServerError(body: 'Error changing password');
+  }
 }
