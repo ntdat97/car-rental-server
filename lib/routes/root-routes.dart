@@ -8,6 +8,7 @@ import '../handlers/image_handlers.dart';
 Router getRootRoutes() {
   final router = Router();
   final userHandlers = UserHandlers();
+  final carHandlers = CarHandlers();
 
   // Public routes
   router.post('/register', registerHandler);
@@ -19,11 +20,10 @@ Router getRootRoutes() {
   protectedRouter.post('/change-password', changePasswordHandler);
   protectedRouter.get('/me', userHandlers.getCurrentUser);
   protectedRouter.put('/update-profile', userHandlers.updateUserProfile);
-  protectedRouter.get('/cars', listCarsHandler);
-  protectedRouter.get('/cars', listCarsHandler);
-  protectedRouter.get('/cars/<id>', getCarHandler);
-  protectedRouter.get('/rental-history', getRentalHistoryHandler);
-  protectedRouter.post('/rental-registration', createRentalRegistrationHandler);
+  protectedRouter.get('/available-cars', carHandlers.getAllCars);
+  // protectedRouter.get('/cars/<id>', getCarHandler);
+  protectedRouter.get('/rental-history', carHandlers.getRentalHistory);
+  protectedRouter.post('/rental-registration', carHandlers.createRentalRegistration);
 
 
   router.mount('/', Pipeline()

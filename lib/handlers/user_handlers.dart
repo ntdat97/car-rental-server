@@ -37,6 +37,7 @@ class UserHandlers {
         'FirstName': row['FirstName'],
         'LastName': row['LastName'],
         'AvatarURL': row['AvatarURL'],
+        'Email': row['Email'],
       };
 
       return Response.ok(
@@ -79,6 +80,7 @@ class UserHandlers {
         'DayOfBirth': (String value) => DateTime.tryParse(value) != null,
         'Address': (String value) => value.length <= 100,
         'PhoneNumber': (String value) => value.length <= 10,
+        'Email': (String value) => value.length <= 100,
       };
 
       // Validate and add fields to update
