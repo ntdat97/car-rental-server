@@ -24,7 +24,8 @@ Router getRootRoutes() {
   // protectedRouter.get('/cars/<id>', getCarHandler);
   protectedRouter.get('/rental-history', carHandlers.getRentalHistory);
   protectedRouter.post('/rental-registration', carHandlers.createRentalRegistration);
-
+  protectedRouter.get('/rental-applications', carHandlers.getAllRentalApplications);
+  protectedRouter.get('/rental-applications/<id>', carHandlers.getRentalApplicationById);
 
   router.mount('/', Pipeline()
     .addMiddleware(authMiddleware)
