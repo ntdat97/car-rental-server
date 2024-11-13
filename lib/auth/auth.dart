@@ -118,7 +118,7 @@ Future<Response> loginHandler(Request request) async {
   }
 
   final results = await dbService.query(
-    'SELECT User_ID, password_hash FROM Users WHERE username = ?',
+    'SELECT User_ID, password_hash, Role FROM Users WHERE username = ?',
     [reqBody.username]
   );
 
@@ -132,10 +132,11 @@ Future<Response> loginHandler(Request request) async {
     return Response.badRequest(body: 'Invalid user credentials');
   }
 
-  // Issue a token valid for a day
+  // Issue a token valid for a day, now including Role
   final jwtToken = JWT({
     'username': reqBody.username,
-    'User_ID': userFromDB['User_ID']
+    'User_ID': userFromDB['User_ID'],
+    'Role': userFromDB['Role'] ?? 'User'
   }).sign(
     jwtSecretKey,
     expiresIn: const Duration(days: 1),
@@ -193,4 +194,21 @@ Future<Response> changePasswordHandler(Request request) async {
     print('Error changing password: $e');
     return Response.internalServerError(body: 'Error changing password');
   }
+}
+
+/// Gets the user role from the request context
+/// Returns null if user is not authenticated
+String? getUserRole(Request request) {
+  final userInfo = request.context['user'] as Map<String, dynamic>?;
+  if (userInfo == null) {
+    return null;
+  }
+  return userInfo['Role'] as String?;
+}
+
+/// Checks if the user has admin role
+/// Returns false if user is not authenticated or not an admin
+bool isAdmin(Request request) {
+  final role = getUserRole(request);
+  return role == 'Admin';
 }

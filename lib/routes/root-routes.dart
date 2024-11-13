@@ -4,16 +4,20 @@ import '../handlers/car_handlers.dart';
 import '../handlers/user_handlers.dart';
 import '../auth/auth.dart';
 import '../handlers/image_handlers.dart';
+import '../handlers/rental_handlers.dart';
+import '../handlers/notification_handlers.dart';
 
 Router getRootRoutes() {
   final router = Router();
   final userHandlers = UserHandlers();
   final carHandlers = CarHandlers();
+  final rentalHandlers = RentalHandlers();
+  final notificationHandlers = NotificationHandlers();
 
   // Public routes
   router.post('/register', registerHandler);
   router.post('/login', loginHandler);
-    router.post('/upload-image', uploadImageHandler);
+  router.post('/upload-image', uploadImageHandler);
 
   // Protected routes
   final protectedRouter = Router();
@@ -26,6 +30,10 @@ Router getRootRoutes() {
   protectedRouter.post('/rental-registration', carHandlers.createRentalRegistration);
   protectedRouter.get('/rental-applications', carHandlers.getAllRentalApplications);
   protectedRouter.get('/rental-applications/<id>', carHandlers.getRentalApplicationById);
+  protectedRouter.put('/rental-applications/<id>/status', rentalHandlers.updateRentalStatus);
+  protectedRouter.post('/notifications/register-token', notificationHandlers.registerFCMToken);
+  protectedRouter.post('/add-admin-car', carHandlers.addCar);
+  protectedRouter.get('/cars/<carId>/images', carHandlers.getCarImages);
 
   router.mount('/', Pipeline()
     .addMiddleware(authMiddleware)

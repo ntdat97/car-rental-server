@@ -1,5 +1,6 @@
 import 'database_service.dart';
 import 'image_service.dart';
+import 'fcm_service.dart';
 
 class ServiceLocator {
   static final ServiceLocator _instance = ServiceLocator._internal();
@@ -8,15 +9,15 @@ class ServiceLocator {
 
   late DatabaseService databaseService;
   late ImageService imageService;
-  //late FCMService fcmService;
+  late FCMService fcmService;
 
   Future<void> setup() async {
     databaseService = DatabaseService();
     await databaseService.connect();
 
     imageService = ImageService();
-
-    //fcmService = await FCMService.getInstance();
+    
+    fcmService = await FCMService.getInstance();
   }
 }
 

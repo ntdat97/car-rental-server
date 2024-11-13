@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:shelf/shelf.dart';
 import '../services/database_service.dart';
 import '../services/service_locator.dart';
+import '../handlers/notification_handlers.dart';
 
 class UserHandlers {
   final DatabaseService dbService = serviceLocator.databaseService;
+  final notificationHandlers = NotificationHandlers();
 
   Future<Response> getCurrentUser(Request request) async {
     final userInfo = request.context['user'] as Map<String, dynamic>?;
@@ -60,9 +62,11 @@ class UserHandlers {
     try {
       final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
       final username = userInfo['username'] as String;
+      final userId = userInfo['User_ID'] as int;
 
       final updateFields = <String>[];
       final updateValues = <Object>[];
+      final updatedFields = <String>[];
 
       // Handle avatar upload first if provided
       if (body['Avatar'] != null) {
@@ -70,6 +74,7 @@ class UserHandlers {
         if (imageUrl != null) {
           updateFields.add('AvatarURL = ?');
           updateValues.add(imageUrl);
+          updatedFields.add('profile picture');
         }
       }
 
@@ -93,6 +98,7 @@ class UserHandlers {
           if (value != null && validator(value)) {
             updateFields.add('$field = ?');
             updateValues.add(value);
+            updatedFields.add(field.toLowerCase());
           }
         }
       }
@@ -111,6 +117,23 @@ class UserHandlers {
         'UPDATE Users SET ${updateFields.join(', ')} WHERE UserName = ?',
         updateValues,
       );
+
+      // Send notification about the profile update
+      if (updatedFields.isNotEmpty) {
+        final fieldsText = updatedFields.length == 1 
+            ? updatedFields.first
+            : '${updatedFields.sublist(0, updatedFields.length - 1).join(', ')} and ${updatedFields.last}';
+            
+        await notificationHandlers.sendUserNotification(
+          userId,
+          'Profile Updated',
+          'Your $fieldsText ${updatedFields.length == 1 ? 'has' : 'have'} been updated successfully.',
+          data: {
+            'type': 'profile_update',
+            'updated_fields': updatedFields,
+          },
+        );
+      }
 
       return Response.ok(
         json.encode({'message': 'Profile updated successfully'}),

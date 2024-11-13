@@ -16,6 +16,8 @@ dependencies:
   mysql1: ^0.20.0
   firebase_admin: ^0.3.0
   http_parser: ^4.1.1
+  googleapis_auth: ^1.6.0
+  image: ^4.3.0
 
 dev_dependencies:
   lints: ^4.0.0
