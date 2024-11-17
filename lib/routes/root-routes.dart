@@ -34,6 +34,8 @@ Router getRootRoutes() {
   protectedRouter.post('/notifications/register-token', notificationHandlers.registerFCMToken);
   protectedRouter.post('/add-admin-car', carHandlers.addCar);
   protectedRouter.get('/cars/<carId>/images', carHandlers.getCarImages);
+  protectedRouter.get('/car-partner-registrations', carHandlers.getAllPartnerApplications);
+  protectedRouter.get('/car-partner-registration/<id>', carHandlers.getPartnerApplicationById);
 
   router.mount('/', Pipeline()
     .addMiddleware(authMiddleware)
