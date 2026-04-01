@@ -187,33 +187,147 @@ class CarHandlers {
       final id = int.tryParse(carId);
       if (id == null) {
         return Response.badRequest(
-          body:
-              json.encode({'success': false, 'error': 'Invalid car ID format'}),
+          body: json.encode({'success': false, 'error': 'Invalid car ID format'}),
           headers: {HttpHeaders.contentTypeHeader: 'application/json'},
         );
       }
 
-      final results = await dbService.query('''
-        SELECT CP_Link 
-        FROM CarPictures 
-        WHERE Car_ID = ?
-        ORDER BY CP_ID
-        ''', [id]);
-
-      final imageUrls = results.map((row) => row['CP_Link'] as String).toList();
+      final imageUrls = await _getImagesForCar(id);
 
       return Response.ok(
         json.encode({
           'success': true,
-          'data': {'carId': id, 'images': imageUrls, 'count': imageUrls.length}
+          'data': {'Car_ID': id, 'Images': imageUrls, 'Count': imageUrls.length}
         }),
         headers: {HttpHeaders.contentTypeHeader: 'application/json'},
       );
     } catch (e) {
       print('Error fetching car images: $e');
       return Response.internalServerError(
-        body: json
-            .encode({'success': false, 'error': 'Error fetching car images'}),
+        body: json.encode({'success': false, 'error': 'Error fetching car images'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  // Helper method to fetch all images for a car
+  Future<List<String>> _getImagesForCar(int carId) async {
+    final results = await dbService.query('''
+      SELECT CP_Link 
+      FROM CarPictures 
+      WHERE Car_ID = ?
+      ORDER BY CP_ID
+      ''', [carId]);
+
+    return results.map((row) => row['CP_Link'] as String).toList();
+  }
+  // Get a specific car by ID with its images
+  Future<Response> getCarById(Request request, String id) async {
+    try {
+      final carId = int.tryParse(id);
+      if (carId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid car ID format'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Fetch car details
+      final carResults = await dbService.query(
+        'SELECT * FROM Cars WHERE Car_ID = ?', 
+        [carId]
+      );
+
+      if (carResults.isEmpty) {
+        return Response.notFound(
+          json.encode({'success': false, 'error': 'Car not found'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final carData = Map<String, dynamic>.from(carResults.first.fields);
+
+      final imageUrls = await _getImagesForCar(carId);
+      carData['Images'] = imageUrls;
+
+      return Response.ok(
+        json.encode({'success': true, 'data': carData}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error fetching car detail: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Error fetching car detail'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+  // Update a car by ID
+  Future<Response> updateCar(Request request, String id) async {
+    try {
+      final carId = int.tryParse(id);
+      if (carId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid car ID format'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Check if user is Admin
+      if (!isAdmin(request)) {
+        return Response.forbidden(
+          json.encode({'success': false, 'error': 'Only administrators can update cars'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+
+      // Check if car exists
+      final checkCar = await dbService.query('SELECT Car_ID FROM Cars WHERE Car_ID = ?', [carId]);
+      if (checkCar.isEmpty) {
+        return Response.notFound(
+          json.encode({'success': false, 'error': 'Car not found'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Build update query dynamically based on provided fields
+      final fields = <String>[];
+      final values = <Object?>[];
+
+      final updatableFields = [
+        'Manufacturer', 'Model', 'LicensePlate', 'Year', 'Seat', 
+        'Transmission', 'FuelType', 'Status', 'PricePerDay'
+      ];
+
+      for (var field in updatableFields) {
+        if (body.containsKey(field)) {
+          fields.add('$field = ?');
+          values.add(body[field]);
+        }
+      }
+
+      if (fields.isEmpty) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'No fields to update'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      values.add(carId);
+      final query = 'UPDATE Cars SET ${fields.join(", ")} WHERE Car_ID = ?';
+      
+      await dbService.query(query, values);
+
+      return Response.ok(
+        json.encode({'success': true, 'message': 'Car updated successfully'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error updating car: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Error updating car'}),
         headers: {HttpHeaders.contentTypeHeader: 'application/json'},
       );
     }

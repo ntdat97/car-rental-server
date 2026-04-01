@@ -11,7 +11,7 @@ class UserHandlers {
 
   Future<Response> getCurrentUser(Request request) async {
     final userInfo = request.context['user'] as Map<String, dynamic>?;
-    
+
     if (userInfo == null) {
       return Response.unauthorized('User not authenticated');
     }
@@ -19,10 +19,8 @@ class UserHandlers {
     final username = userInfo['username'] as String;
 
     try {
-      final results = await dbService.query(
-        'SELECT * FROM Users WHERE username = ?',
-        [username]
-      );
+      final results = await dbService
+          .query('SELECT * FROM Users WHERE username = ?', [username]);
 
       if (results.isEmpty) {
         return Response.notFound('User not found');
@@ -40,6 +38,7 @@ class UserHandlers {
         'LastName': row['LastName'],
         'AvatarURL': row['AvatarURL'],
         'Email': row['Email'],
+        'Role': row['Role'],
       };
 
       return Response.ok(
@@ -54,13 +53,14 @@ class UserHandlers {
 
   Future<Response> updateUserProfile(Request request) async {
     final userInfo = request.context['user'] as Map<String, dynamic>?;
-    
+
     if (userInfo == null) {
       return Response.unauthorized('User not authenticated');
     }
 
     try {
-      final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+      final body = await json.decode(await request.readAsString())
+          as Map<String, dynamic>;
       final username = userInfo['username'] as String;
       final userId = userInfo['User_ID'] as int;
 
@@ -70,7 +70,8 @@ class UserHandlers {
 
       // Handle avatar upload first if provided
       if (body['Avatar'] != null) {
-        final imageUrl = await serviceLocator.imageService.uploadImage(body['Avatar'] as String);
+        final imageUrl = await serviceLocator.imageService
+            .uploadImage(body['Avatar'] as String);
         if (imageUrl != null) {
           updateFields.add('AvatarURL = ?');
           updateValues.add(imageUrl);
@@ -92,7 +93,7 @@ class UserHandlers {
       for (final entry in allowedFields.entries) {
         final field = entry.key;
         final validator = entry.value;
-        
+
         if (body.containsKey(field)) {
           final value = body[field] as String?;
           if (value != null && validator(value)) {
@@ -120,10 +121,10 @@ class UserHandlers {
 
       // Send notification about the profile update
       if (updatedFields.isNotEmpty) {
-        final fieldsText = updatedFields.length == 1 
+        final fieldsText = updatedFields.length == 1
             ? updatedFields.first
             : '${updatedFields.sublist(0, updatedFields.length - 1).join(', ')} and ${updatedFields.last}';
-            
+
         await notificationHandlers.sendUserNotification(
           userId,
           'Profile Updated',

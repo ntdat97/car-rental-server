@@ -15,6 +15,7 @@ dependencies:
   dotenv: ^4.1.0
   mysql1: ^0.20.0
   firebase_admin: ^0.3.0
+  shelf_cors_headers: ^0.1.5
   http_parser: ^4.1.1
   googleapis_auth: ^1.6.0
   image: ^4.3.0

@@ -27,7 +27,8 @@ Router getRootRoutes() {
   protectedRouter.get('/me', userHandlers.getCurrentUser);
   protectedRouter.put('/update-profile', userHandlers.updateUserProfile);
   protectedRouter.get('/available-cars', carHandlers.getAllCars);
-  // protectedRouter.get('/cars/<id>', getCarHandler);
+  protectedRouter.get('/cars/<id>', carHandlers.getCarById);
+  protectedRouter.put('/cars/<id>', carHandlers.updateCar);
   protectedRouter.get('/rental-history', rentalHandlers.getRentalHistory);
   protectedRouter.post('/rental-registration', rentalHandlers.createRentalRegistration);
   protectedRouter.get('/rental-applications', rentalHandlers.getAllRentalApplications);

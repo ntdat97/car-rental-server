@@ -4,6 +4,7 @@ import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:car_rental_server/routes/root-routes.dart';
 import 'package:car_rental_server/services/service_locator.dart';
+import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 import 'package:firebase_admin/firebase_admin.dart';
 
 void main() async {
@@ -19,6 +20,7 @@ void main() async {
 
   final handler = const shelf.Pipeline()
       .addMiddleware(shelf.logRequests())
+      .addMiddleware(corsHeaders())
       .addHandler(getRootRoutes());
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
