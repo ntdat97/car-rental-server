@@ -15,19 +15,35 @@ class CarHandlers {
       final queryParams = <Object>[];
 
       if (params.containsKey('status')) {
-        whereConditions.add('Status = ?');
+        whereConditions.add('c.Status = ?');
         queryParams.add(params['status']!);
       }
       if (params.containsKey('manufacturer')) {
-        whereConditions.add('Manufacturer = ?');
+        whereConditions.add('c.Manufacturer = ?');
         queryParams.add(params['manufacturer']!);
       }
       if (params.containsKey('seats')) {
-        whereConditions.add('Seat = ?');
+        whereConditions.add('c.Seat = ?');
         queryParams.add(int.parse(params['seats']!));
       }
 
-      var query = 'SELECT * FROM cars';
+      // Date-based availability: exclude cars that have an Approved rental overlapping the requested period
+      final hasDateFilter = params.containsKey('startDate') && params.containsKey('endDate');
+
+      var query = 'SELECT c.* FROM cars c';
+
+      if (hasDateFilter) {
+        query += '''
+          LEFT JOIN serviceapplicationform saf
+            ON saf.Car_ID = c.Car_ID
+            AND saf.Status = 'Approved'
+            AND saf.StartDate <= ?
+            AND saf.EndDate >= ?
+        ''';
+        queryParams.insert(0, params['endDate']!);
+        queryParams.insert(1, params['startDate']!);
+        whereConditions.add('saf.SAF_ID IS NULL');
+      }
 
       if (whereConditions.isNotEmpty) {
         query += ' WHERE ${whereConditions.join(' AND ')}';

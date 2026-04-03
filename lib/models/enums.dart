@@ -3,7 +3,8 @@ enum ServiceStatus {
   Approved,
   Rejected,
   Completed,
-  Cancelled
+  Cancelled,
+  Conflicted
 }
 
 // Add other enums here as needed
