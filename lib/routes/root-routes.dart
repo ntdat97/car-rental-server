@@ -33,6 +33,7 @@ Router getRootRoutes() {
   protectedRouter.post('/rental-registration', rentalHandlers.createRentalRegistration);
   protectedRouter.get('/rental-applications', rentalHandlers.getAllRentalApplications);
   protectedRouter.get('/rental-applications/<id>', rentalHandlers.getRentalApplicationById);
+  protectedRouter.get('/rental-applications/<id>/conflicts', rentalHandlers.getConflicts);
   protectedRouter.put('/rental-applications/<id>/status', rentalHandlers.updateRentalStatus);
   protectedRouter.post('/notifications/register-token', notificationHandlers.registerFCMToken);
   protectedRouter.post('/add-admin-car', carHandlers.addCar);
