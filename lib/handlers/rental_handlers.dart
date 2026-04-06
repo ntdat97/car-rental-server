@@ -99,14 +99,94 @@ class RentalHandlers {
             "UPDATE Cars SET Status = 'Rented' WHERE Car_ID = ?",
             [carId]
           );
-        } else if (newStatus == 'Completed' || newStatus == 'Cancelled') {
-          // Only set back to Available if no other Approved rental exists for this car
-          final otherApproved = await dbService.query('''
+        } else if (newStatus == 'Active') {
+          // Verify pre-checklist exists before allowing transition
+          final preChecklist = await dbService.query(
+            'SELECT COUNT(*) as cnt FROM PreRentalChecklist WHERE SAF_ID = ?',
+            [applicationId]
+          );
+          if (preChecklist.first['cnt'] == 0) {
+            return Response.forbidden(
+              json.encode({
+                'success': false,
+                'error': 'Pre-rental checklist must be saved before marking as Active'
+              }),
+              headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+            );
+          }
+        } else if (newStatus == 'Completed') {
+          // Verify post-checklist exists before allowing completion
+          final postChecklist = await dbService.query(
+            'SELECT COUNT(*) as cnt FROM PostRentalChecklist WHERE SAF_ID = ?',
+            [applicationId]
+          );
+          if (postChecklist.first['cnt'] == 0) {
+            return Response.forbidden(
+              json.encode({
+                'success': false,
+                'error': 'Post-rental checklist must be saved before completing'
+              }),
+              headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+            );
+          }
+
+          // Calculate FinalAmount
+          final financialData = await dbService.query('''
+            SELECT 
+              saf.StartDate, saf.EndDate, saf.PostOdometer,
+              saf.TotalDamageCost, saf.TotalPenalty,
+              c.PricePerDay, c.Deposit, c.Car_ID
+            FROM serviceapplicationform saf
+            JOIN Cars c ON saf.Car_ID = c.Car_ID
+            WHERE saf.SAF_ID = ?
+          ''', [applicationId]);
+
+          if (financialData.isNotEmpty) {
+            final fRow = financialData.first;
+            final startDate = DateTime.parse(fRow['StartDate'].toString());
+            final endDate = DateTime.parse(fRow['EndDate'].toString());
+            final days = endDate.difference(startDate).inDays + 1;
+            final pricePerDay = (fRow['PricePerDay'] as num).toDouble();
+            final deposit = (fRow['Deposit'] as num?)?.toDouble() ?? 0;
+            final totalDamage = (fRow['TotalDamageCost'] as num?)?.toDouble() ?? 0;
+            final totalPenalty = (fRow['TotalPenalty'] as num?)?.toDouble() ?? 0;
+            final finalAmount = (pricePerDay * days) - deposit + totalDamage + totalPenalty;
+
+            await dbService.query(
+              'UPDATE serviceapplicationform SET FinalAmount = ? WHERE SAF_ID = ?',
+              [finalAmount, applicationId]
+            );
+
+            // Sync PostOdometer to Cars.Odometer
+            final postOdo = fRow['PostOdometer'];
+            if (postOdo != null) {
+              await dbService.query(
+                'UPDATE Cars SET Odometer = ? WHERE Car_ID = ?',
+                [postOdo, fRow['Car_ID']]
+              );
+            }
+          }
+
+          // Only set back to Available if no other Approved/Active rental exists for this car
+          final otherActive = await dbService.query('''
             SELECT SAF_ID FROM serviceapplicationform
-            WHERE Car_ID = ? AND SAF_ID != ? AND Status = 'Approved'
+            WHERE Car_ID = ? AND SAF_ID != ? AND Status IN ('Approved', 'Active')
           ''', [carId, applicationId]);
 
-          if (otherApproved.isEmpty) {
+          if (otherActive.isEmpty) {
+            await dbService.query(
+              "UPDATE Cars SET Status = 'Available' WHERE Car_ID = ?",
+              [carId]
+            );
+          }
+        } else if (newStatus == 'Cancelled') {
+          // Only set back to Available if no other Approved/Active rental exists for this car
+          final otherActive = await dbService.query('''
+            SELECT SAF_ID FROM serviceapplicationform
+            WHERE Car_ID = ? AND SAF_ID != ? AND Status IN ('Approved', 'Active')
+          ''', [carId, applicationId]);
+
+          if (otherActive.isEmpty) {
             await dbService.query(
               "UPDATE Cars SET Status = 'Available' WHERE Car_ID = ?",
               [carId]
@@ -197,6 +277,10 @@ class RentalHandlers {
             case 'Approved':
               title = 'Rental Approved';
               body = 'Your rental request for $carName has been approved!';
+              break;
+            case 'Active':
+              title = 'Rental Active';
+              body = 'Your rental for $carName is now active. The car has been inspected and picked up.';
               break;
             case 'Rejected':
               title = 'Rental Rejected';
@@ -293,15 +377,21 @@ class RentalHandlers {
 
     try {
       final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+
+      final startDate = body['StartDate'] ?? body['startDate'];
+      final endDate = body['EndDate'] ?? body['endDate'];
+      final carId = body['Car_ID'] ?? body['carId'] ?? body['CarId'];
+      final geoLimitKm = body['GeoLimitKm'] ?? body['geoLimitKm'];
       
       // Validate required fields
-      if (!body.containsKey('StartDate') || 
-          !body.containsKey('EndDate') || 
-          !body.containsKey('Car_ID')) {
+      if (startDate == null ||
+          endDate == null ||
+          carId == null ||
+          geoLimitKm == null) {
         return Response.badRequest(
           body: json.encode({
             'success': false,
-            'error': 'Missing required fields: StartDate, EndDate, Car_ID'
+            'error': 'Missing required fields: StartDate, EndDate, Car_ID, GeoLimitKm'
           })
         );
       }
@@ -314,7 +404,7 @@ class RentalHandlers {
         SELECT SAF_ID FROM serviceapplicationform
         WHERE Car_ID = ? AND Status = 'Approved'
           AND StartDate <= ? AND EndDate >= ?
-      ''', [body['Car_ID'], body['EndDate'], body['StartDate']]);
+      ''', [carId, endDate, startDate]);
 
       if (overlapping.isNotEmpty) {
         return Response(409,
@@ -330,15 +420,16 @@ class RentalHandlers {
       final result = await dbService.query(
         '''
         INSERT INTO serviceapplicationform 
-        (StartDate, EndDate, Status, User_ID, Car_ID)
-        VALUES (?, ?, ?, ?, ?)
+        (StartDate, EndDate, Status, User_ID, Car_ID, GeoLimitKm)
+        VALUES (?, ?, ?, ?, ?, ?)
         ''',
         [
-          body['StartDate'],
-          body['EndDate'],
+          startDate,
+          endDate,
           ServiceStatus.Pending.name,  // Using enum
           userId,
-          body['Car_ID'],
+          carId,
+          geoLimitKm,
         ]
       );
 
@@ -476,6 +567,7 @@ class RentalHandlers {
           c.Manufacturer,
           c.LicensePlate,
           c.PricePerDay,
+          c.Deposit,
           c.ImageURL
         FROM serviceapplicationform saf
         JOIN Users u ON saf.User_ID = u.User_ID
@@ -519,6 +611,12 @@ class RentalHandlers {
           'createdAt': application['CreatedAt']?.toIso8601String(),
           'duration': duration,
           'totalAmount': totalAmount,
+          'geoLimitKm': application['GeoLimitKm'],
+          'preOdometer': application['PreOdometer'],
+          'postOdometer': application['PostOdometer'],
+          'totalDamageCost': application['TotalDamageCost'],
+          'totalPenalty': application['TotalPenalty'],
+          'finalAmount': application['FinalAmount'],
         },
         'user': {
           'id': application['User_ID'],
@@ -537,6 +635,7 @@ class RentalHandlers {
           'manufacturer': application['Manufacturer'],
           'licensePlate': application['LicensePlate'],
           'pricePerDay': application['PricePerDay'],
+          'deposit': application['Deposit'],
         }
       };
 

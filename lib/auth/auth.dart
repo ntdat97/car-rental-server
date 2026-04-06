@@ -118,7 +118,7 @@ Future<Response> loginHandler(Request request) async {
   }
 
   final results = await dbService.query(
-    'SELECT User_ID, password_hash, Role FROM Users WHERE username = ?',
+    'SELECT User_ID, password_hash, Role, IsBanned, BanReason, IsDeleted FROM Users WHERE username = ?',
     [reqBody.username]
   );
 
@@ -130,6 +130,17 @@ Future<Response> loginHandler(Request request) async {
   final passwordMatches = BCrypt.checkpw(reqBody.password, userFromDB['password_hash']);
   if (!passwordMatches) {
     return Response.badRequest(body: 'Invalid user credentials');
+  }
+
+  // Check if user is deleted
+  if ((userFromDB['IsDeleted'] ?? 0) == 1) {
+    return Response.forbidden('Account has been deactivated');
+  }
+
+  // Check if user is banned
+  if ((userFromDB['IsBanned'] ?? 0) == 1) {
+    final reason = userFromDB['BanReason'] ?? '';
+    return Response.forbidden('Account is banned: $reason');
   }
 
   // Issue a token valid for a day, now including Role

@@ -7,6 +7,16 @@ import '../auth/auth.dart';
 class CarHandlers {
   final dbService = serviceLocator.databaseService;
 
+  // Convert MySQL row fields to JSON-encodable map (handles DateTime, Blob, etc.)
+  Map<String, dynamic> _sanitizeRow(Map<String, dynamic> row) {
+    return row.map((key, value) {
+      if (value is DateTime) {
+        return MapEntry(key, value.toIso8601String().split('T')[0]); // date only
+      }
+      return MapEntry(key, value);
+    });
+  }
+
   // Get all cars with filtering
   Future<Response> getAllCars(Request request) async {
     try {
@@ -17,6 +27,12 @@ class CarHandlers {
       if (params.containsKey('status')) {
         whereConditions.add('c.Status = ?');
         queryParams.add(params['status']!);
+      } else {
+        // By default, exclude Maintenance cars (e.g. Flutter app browsing)
+        // Admin web explicitly passes status or no filter to see all
+        if (params.containsKey('startDate') || !params.containsKey('includeAll')) {
+          whereConditions.add("c.Status != 'Maintenance'");
+        }
       }
       if (params.containsKey('manufacturer')) {
         whereConditions.add('c.Manufacturer = ?');
@@ -51,8 +67,9 @@ class CarHandlers {
 
       final results = await dbService.query(query, queryParams);
 
-      final cars =
-          results.map((row) => Map<String, dynamic>.from(row.fields)).toList();
+      final cars = results
+          .map((row) => _sanitizeRow(Map<String, dynamic>.from(row.fields)))
+          .toList();
 
       return Response.ok(
         json.encode({'success': true, 'data': cars, 'total': cars.length}),
@@ -112,6 +129,22 @@ class CarHandlers {
       await dbService.query('START TRANSACTION');
 
       try {
+        // Check for duplicate license plate
+        final existing = await dbService.query(
+          'SELECT Car_ID FROM Cars WHERE LicensePlate = ?',
+          [body['LicensePlate']]
+        );
+        if (existing.isNotEmpty) {
+          await dbService.query('ROLLBACK');
+          return Response.badRequest(
+            body: json.encode({
+              'success': false,
+              'error': 'License plate "${body['LicensePlate']}" is already registered in the system.'
+            }),
+            headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+          );
+        }
+
         final List<String> base64Images = List<String>.from(body['Images']);
 
         // Create a thumbnail from the first image for the Cars table
@@ -132,8 +165,8 @@ class CarHandlers {
         // Insert into Cars table with the thumbnail
         final carResult = await dbService.query('''
           INSERT INTO Cars 
-          (LicensePlate, Seat, Manufacturer, Model, Year, Transmission, FuelType, Status, PricePerDay, ImageURL)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (LicensePlate, Seat, Manufacturer, Model, Year, Transmission, FuelType, Status, PricePerDay, ImageURL, Deposit, InspectionDate, InspectionExpiry, Odometer)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''', [
           body['LicensePlate'],
           body['Seat'],
@@ -145,6 +178,10 @@ class CarHandlers {
           body['Status'] ?? 'Available',
           body['PricePerDay'],
           thumbnailUrl, // Use the compressed thumbnail
+          body['Deposit'] ?? 0,
+          body['InspectionDate'],
+          body['InspectionExpiry'],
+          body['Odometer'] ?? 0,
         ]);
 
         final carId = carResult.insertId;
@@ -261,7 +298,7 @@ class CarHandlers {
         );
       }
 
-      final carData = Map<String, dynamic>.from(carResults.first.fields);
+      final carData = _sanitizeRow(Map<String, dynamic>.from(carResults.first.fields));
 
       final imageUrls = await _getImagesForCar(carId);
       carData['Images'] = imageUrls;
@@ -314,7 +351,8 @@ class CarHandlers {
 
       final updatableFields = [
         'Manufacturer', 'Model', 'LicensePlate', 'Year', 'Seat', 
-        'Transmission', 'FuelType', 'Status', 'PricePerDay'
+        'Transmission', 'FuelType', 'Status', 'PricePerDay',
+        'Deposit', 'InspectionDate', 'InspectionExpiry', 'Odometer'
       ];
 
       for (var field in updatableFields) {
@@ -344,6 +382,114 @@ class CarHandlers {
       print('Error updating car: $e');
       return Response.internalServerError(
         body: json.encode({'success': false, 'error': 'Error updating car'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  // Get the active (Approved) rental for a car
+  Future<Response> getActiveRental(Request request, String carId) async {
+    try {
+      final id = int.tryParse(carId);
+      if (id == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid car ID format'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final results = await dbService.query('''
+        SELECT saf.SAF_ID, saf.StartDate, saf.EndDate, saf.Status,
+               u.FirstName, u.LastName, u.UserName
+        FROM serviceapplicationform saf
+        JOIN users u ON u.User_ID = saf.User_ID
+        WHERE saf.Car_ID = ? AND saf.Status = 'Approved'
+        ORDER BY saf.StartDate DESC
+        LIMIT 1
+      ''', [id]);
+
+      if (results.isEmpty) {
+        return Response.ok(
+          json.encode({'success': true, 'data': null}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final rental = Map<String, dynamic>.from(results.first.fields);
+      return Response.ok(
+        json.encode({'success': true, 'data': rental}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error fetching active rental: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Error fetching active rental'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  // Delete a car by ID
+  Future<Response> deleteCar(Request request, String id) async {
+    try {
+      final carId = int.tryParse(id);
+      if (carId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid car ID format'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      if (!isAdmin(request)) {
+        return Response.forbidden(
+          json.encode({'success': false, 'error': 'Only administrators can delete cars'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Check if car has any active (Approved) rental
+      final activeRentals = await dbService.query(
+        "SELECT SAF_ID FROM serviceapplicationform WHERE Car_ID = ? AND Status = 'Approved'",
+        [carId]
+      );
+      if (activeRentals.isNotEmpty) {
+        return Response.badRequest(
+          body: json.encode({
+            'success': false,
+            'error': 'Cannot delete a car with an active rental. Complete or cancel the rental first.'
+          }),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      await dbService.query('START TRANSACTION');
+      try {
+        // Delete related pictures
+        await dbService.query('DELETE FROM CarPictures WHERE Car_ID = ?', [carId]);
+        // Delete the car
+        final result = await dbService.query('DELETE FROM Cars WHERE Car_ID = ?', [carId]);
+
+        if (result.affectedRows == 0) {
+          await dbService.query('ROLLBACK');
+          return Response.notFound(
+            json.encode({'success': false, 'error': 'Car not found'}),
+            headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+          );
+        }
+
+        await dbService.query('COMMIT');
+        return Response.ok(
+          json.encode({'success': true, 'message': 'Car deleted successfully'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      } catch (e) {
+        await dbService.query('ROLLBACK');
+        rethrow;
+      }
+    } catch (e) {
+      print('Error deleting car: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Error deleting car'}),
         headers: {HttpHeaders.contentTypeHeader: 'application/json'},
       );
     }
