@@ -216,11 +216,11 @@ class ChecklistHandlers {
         checklistItems.add({
           'ID': item['ID'],
           'Item_ID': item['Item_ID'],
-          'ItemName': item['TemplateName'] ?? item['CustomItemName'],
-          'CustomItemName': item['CustomItemName'],
-          'Status': item['Status'],
-          'Comment': item['Comment'],
-          'Images': itemImages.map((r) => r['ImageURL']).toList(),
+          'ItemName': (item['TemplateName'] ?? item['CustomItemName'])?.toString(),
+          'CustomItemName': item['CustomItemName']?.toString(),
+          'Status': item['Status']?.toString(),
+          'Comment': item['Comment']?.toString(),
+          'Images': itemImages.map((r) => r['ImageURL'].toString()).toList(),
         });
       }
 
@@ -229,7 +229,7 @@ class ChecklistHandlers {
           'success': true,
           'data': {
             'items': checklistItems,
-            'generalImages': generalImages.map((r) => r['ImageURL']).toList(),
+            'generalImages': generalImages.map((r) => r['ImageURL'].toString()).toList(),
             'odometer': odometer.isNotEmpty ? odometer.first['PreOdometer'] : null,
           }
         }),
@@ -386,12 +386,12 @@ class ChecklistHandlers {
         checklistItems.add({
           'ID': item['ID'],
           'Item_ID': item['Item_ID'],
-          'ItemName': item['TemplateName'] ?? item['CustomItemName'],
-          'CustomItemName': item['CustomItemName'],
-          'Status': item['Status'],
-          'Comment': item['Comment'],
+          'ItemName': (item['TemplateName'] ?? item['CustomItemName'])?.toString(),
+          'CustomItemName': item['CustomItemName']?.toString(),
+          'Status': item['Status']?.toString(),
+          'Comment': item['Comment']?.toString(),
           'DamageCost': item['DamageCost'],
-          'Images': itemImages.map((r) => r['ImageURL']).toList(),
+          'Images': itemImages.map((r) => r['ImageURL'].toString()).toList(),
         });
       }
 
@@ -400,7 +400,7 @@ class ChecklistHandlers {
           'success': true,
           'data': {
             'items': checklistItems,
-            'generalImages': generalImages.map((r) => r['ImageURL']).toList(),
+            'generalImages': generalImages.map((r) => r['ImageURL'].toString()).toList(),
             'odometer': odometer.isNotEmpty ? odometer.first['PostOdometer'] : null,
           }
         }),
@@ -486,7 +486,7 @@ class ChecklistHandlers {
       final penalties = results.map((row) {
         return {
           'ID': row['ID'],
-          'Description': row['Description'],
+          'Description': row['Description']?.toString(),
           'Amount': row['Amount'],
         };
       }).toList();
