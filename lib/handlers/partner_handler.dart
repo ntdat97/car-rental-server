@@ -360,14 +360,20 @@ class PartnerHandlers {
       final whereConditions = <String>[];
       final queryParams = <Object>[];
 
+      // Non-admin users can only see their own partner applications
+      final role = userInfo['Role'] as String? ?? 'User';
+      if (role != 'Admin') {
+        whereConditions.add('crf.User_ID = ?');
+        queryParams.add(userInfo['User_ID'] as int);
+      } else if (params.containsKey('userId')) {
+        // Admin can filter by specific user
+        whereConditions.add('crf.User_ID = ?');
+        queryParams.add(int.parse(params['userId']!));
+      }
+
       if (params.containsKey('status')) {
         whereConditions.add('crf.Status = ?');
         queryParams.add(params['status']!);
-      }
-
-      if (params.containsKey('userId')) {
-        whereConditions.add('crf.User_ID = ?');
-        queryParams.add(int.parse(params['userId']!));
       }
 
       var query = '''

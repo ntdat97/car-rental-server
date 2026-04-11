@@ -37,7 +37,7 @@ class AdminUserHandlers {
       if (status == 'active') {
         query += ' AND (IsBanned = 0 OR IsBanned IS NULL) AND (IsDeleted = 0 OR IsDeleted IS NULL)';
       } else if (status == 'banned') {
-        query += ' AND IsBanned = 1';
+        query += ' AND IsBanned = 1 AND (IsDeleted = 0 OR IsDeleted IS NULL)';
       } else if (status == 'deleted') {
         query += ' AND IsDeleted = 1';
       }
@@ -238,9 +238,27 @@ class AdminUserHandlers {
       };
 
       for (final entry in allowedFields.entries) {
-        if (body.containsKey(entry.key) && body[entry.key] != null) {
-          updateFields.add('${entry.value} = ?');
-          updateValues.add(body[entry.key]);
+        if (body.containsKey(entry.key)) {
+          final val = body[entry.key];
+          if (val == null || (val is String && val.isEmpty)) {
+            // Allow explicit null to clear nullable fields, skip empty strings
+            if (const {'DayOfBirth', 'Address', 'PhoneNumber'}.contains(entry.key)) {
+              updateFields.add('${entry.value} = NULL');
+            }
+          } else {
+            updateFields.add('${entry.value} = ?');
+            updateValues.add(val);
+          }
+        }
+      }
+
+      // Handle avatar upload if provided
+      if (body.containsKey('Avatar') && body['Avatar'] != null) {
+        final imageUrl = await serviceLocator.imageService
+            .uploadImage(body['Avatar'] as String);
+        if (imageUrl != null) {
+          updateFields.add('AvatarURL = ?');
+          updateValues.add(imageUrl);
         }
       }
 

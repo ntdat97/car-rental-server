@@ -9,6 +9,7 @@ import '../handlers/image_handlers.dart';
 import '../handlers/rental_handlers.dart';
 import '../handlers/notification_handlers.dart';
 import '../handlers/checklist_handlers.dart';
+import '../handlers/user_document_handlers.dart';
 
 Router getRootRoutes() {
   final router = Router();
@@ -19,6 +20,7 @@ Router getRootRoutes() {
   final partnerHandlers = PartnerHandlers();
   final adminUserHandlers = AdminUserHandlers();
   final checklistHandlers = ChecklistHandlers();
+  final userDocumentHandlers = UserDocumentHandlers();
 
   // Public routes
   router.post('/register', registerHandler);
@@ -39,9 +41,13 @@ Router getRootRoutes() {
   protectedRouter.get('/rental-applications', rentalHandlers.getAllRentalApplications);
   protectedRouter.get('/rental-applications/<id>', rentalHandlers.getRentalApplicationById);
   protectedRouter.get('/rental-applications/<id>/conflicts', rentalHandlers.getConflicts);
+  protectedRouter.put('/rental-applications/<id>/resolve-conflict', rentalHandlers.resolveConflict);
   protectedRouter.put('/rental-applications/<id>/status', rentalHandlers.updateRentalStatus);
   protectedRouter.get('/checklist-template', checklistHandlers.getChecklistTemplate);
   protectedRouter.post('/checklist-template', checklistHandlers.addChecklistTemplateItem);
+  protectedRouter.put('/checklist-template/reorder', checklistHandlers.reorderChecklistTemplate);
+  protectedRouter.put('/checklist-template/<id>', checklistHandlers.updateChecklistTemplateItem);
+  protectedRouter.delete('/checklist-template/<id>', checklistHandlers.deleteChecklistTemplateItem);
   protectedRouter.post('/rental-applications/<id>/pre-checklist', checklistHandlers.savePreChecklist);
   protectedRouter.get('/rental-applications/<id>/pre-checklist', checklistHandlers.getPreChecklist);
   protectedRouter.post('/rental-applications/<id>/post-checklist', checklistHandlers.savePostChecklist);
@@ -56,6 +62,16 @@ Router getRootRoutes() {
   protectedRouter.get('/car-partner-registrations', partnerHandlers.getAllPartnerApplications);
   protectedRouter.get('/car-partner-registration/<id>', partnerHandlers.getPartnerApplicationById);
   protectedRouter.put('/car-partner-registration/<id>/status', partnerHandlers.updatePartnerRentalStatus);
+
+  // User document routes (self-service)
+  protectedRouter.get('/me/documents', userDocumentHandlers.getMyDocuments);
+  protectedRouter.post('/me/documents', userDocumentHandlers.uploadMyDocument);
+  protectedRouter.delete('/me/documents/<docId>', userDocumentHandlers.deleteMyDocument);
+
+  // Admin user document routes
+  protectedRouter.get('/users/<userId>/documents', userDocumentHandlers.getUserDocuments);
+  protectedRouter.post('/users/<userId>/documents', userDocumentHandlers.uploadUserDocument);
+  protectedRouter.delete('/users/<userId>/documents/<docId>', (Request request, String userId, String docId) => userDocumentHandlers.deleteUserDocument(request, userId, docId));
 
   // Admin user management routes
   protectedRouter.get('/admin/users', adminUserHandlers.getUsers);

@@ -134,13 +134,27 @@ Future<Response> loginHandler(Request request) async {
 
   // Check if user is deleted
   if ((userFromDB['IsDeleted'] ?? 0) == 1) {
-    return Response.forbidden('Account has been deactivated');
+    return Response.forbidden(
+      jsonEncode({
+        'error': 'ACCOUNT_DEACTIVATED',
+        'message': 'Your account has been deactivated.',
+      }),
+      headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+    );
   }
 
   // Check if user is banned
   if ((userFromDB['IsBanned'] ?? 0) == 1) {
     final reason = userFromDB['BanReason'] ?? '';
-    return Response.forbidden('Account is banned: $reason');
+    return Response.forbidden(
+      jsonEncode({
+        'error': 'ACCOUNT_BANNED',
+        'message': 'Your account has been banned.',
+        'reason': reason,
+        'bannedAt': userFromDB['BannedAt']?.toString(),
+      }),
+      headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+    );
   }
 
   // Issue a token valid for a day, now including Role

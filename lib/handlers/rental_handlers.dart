@@ -466,16 +466,21 @@ class RentalHandlers {
       final whereConditions = <String>[];
       final queryParams = <Object>[];
 
+      // Non-admin users can only see their own applications
+      final role = userInfo['Role'] as String? ?? 'User';
+      if (role != 'Admin') {
+        whereConditions.add('saf.User_ID = ?');
+        queryParams.add(userInfo['User_ID'] as int);
+      } else if (params.containsKey('userId')) {
+        // Admin can filter by specific user
+        whereConditions.add('saf.User_ID = ?');
+        queryParams.add(int.parse(params['userId']!));
+      }
+
       // Add filters for status if provided
       if (params.containsKey('status')) {
         whereConditions.add('saf.Status = ?');
         queryParams.add(params['status']!);
-      }
-
-      // Add filters for specific user if provided
-      if (params.containsKey('userId')) {
-        whereConditions.add('saf.User_ID = ?');
-        queryParams.add(int.parse(params['userId']!));
       }
 
       var query = '''
@@ -653,6 +658,119 @@ class RentalHandlers {
           'success': false,
           'error': 'Error fetching rental application'
         }),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  /// PUT /rental-applications/<id>/resolve-conflict
+  Future<Response> resolveConflict(Request request, String id) async {
+    final userInfo = request.context['user'] as Map<String, dynamic>?;
+    if (userInfo == null) {
+      return Response.unauthorized('User not authenticated');
+    }
+
+    try {
+      final applicationId = int.tryParse(id);
+      if (applicationId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid application ID format'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final body = json.decode(await request.readAsString()) as Map<String, dynamic>;
+      final newCarId = body['Car_ID'] as int?;
+      final geoLimitKm = body['GeoLimitKm'] as int?;
+      final newStartDate = body['StartDate'] as String?;
+      final newEndDate = body['EndDate'] as String?;
+
+      if (newCarId == null || geoLimitKm == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Car_ID and GeoLimitKm are required'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final userId = userInfo['User_ID'] as int;
+
+      // Get the existing application
+      final existing = await dbService.query(
+        'SELECT SAF_ID, User_ID, Status, StartDate, EndDate FROM serviceapplicationform WHERE SAF_ID = ?',
+        [applicationId],
+      );
+
+      if (existing.isEmpty) {
+        return Response.notFound(
+          json.encode({'success': false, 'error': 'Rental application not found'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final app = existing.first;
+
+      // Verify user owns this application
+      if (app['User_ID'] != userId) {
+        return Response.forbidden(
+          json.encode({'success': false, 'error': 'You do not own this rental application'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Verify status is Conflicted
+      if (app['Status'] != 'Conflicted') {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Application is not in Conflicted status'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Use new dates if provided, otherwise fall back to the existing record dates
+      final startDate = newStartDate ?? app['StartDate'].toString();
+      final endDate = newEndDate ?? app['EndDate'].toString();
+
+      // Check the new car is available for the date range
+      final overlapping = await dbService.query('''
+        SELECT SAF_ID FROM serviceapplicationform
+        WHERE Car_ID = ? AND Status IN ('Approved', 'Active')
+          AND StartDate <= ? AND EndDate >= ?
+      ''', [newCarId, endDate, startDate]);
+
+      if (overlapping.isNotEmpty) {
+        return Response(409,
+          body: json.encode({
+            'success': false,
+            'error': 'The selected car is already booked for this period'
+          }),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Update the record: new car, new dates, new geo limit, back to Pending
+      await dbService.query(
+        "UPDATE serviceapplicationform SET Car_ID = ?, StartDate = ?, EndDate = ?, GeoLimitKm = ?, Status = 'Pending' WHERE SAF_ID = ? AND Status = 'Conflicted' AND User_ID = ?",
+        [newCarId, startDate, endDate, geoLimitKm, applicationId, userId],
+      );
+
+      return Response.ok(
+        json.encode({
+          'success': true,
+          'message': 'Conflict resolved — application resubmitted as Pending',
+          'data': {
+            'SAF_ID': applicationId,
+            'Car_ID': newCarId,
+            'StartDate': startDate,
+            'EndDate': endDate,
+            'GeoLimitKm': geoLimitKm,
+            'Status': 'Pending',
+          }
+        }),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error resolving conflict: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Error resolving conflict'}),
         headers: {HttpHeaders.contentTypeHeader: 'application/json'},
       );
     }

@@ -80,6 +80,158 @@ class ChecklistHandlers {
     }
   }
 
+  // PUT /checklist-template/<id>
+  Future<Response> updateChecklistTemplateItem(Request request, String id) async {
+    try {
+      final itemId = int.tryParse(id);
+      if (itemId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid item ID'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final body = await request.readAsString().then(json.decode);
+      final itemName = body['ItemName'] as String?;
+
+      if (itemName == null || itemName.trim().isEmpty) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'ItemName is required'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Check item exists
+      final existing = await dbService.query(
+        'SELECT * FROM ChecklistTemplate WHERE Item_ID = ?', [itemId]
+      );
+      if (existing.isEmpty) {
+        return Response.notFound(
+          json.encode({'success': false, 'error': 'Item not found'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      await dbService.query(
+        'UPDATE ChecklistTemplate SET ItemName = ? WHERE Item_ID = ?',
+        [itemName.trim(), itemId]
+      );
+
+      return Response.ok(
+        json.encode({
+          'success': true,
+          'data': {
+            'Item_ID': itemId,
+            'ItemName': itemName.trim(),
+            'IsDefault': existing.first['IsDefault'] == 1,
+            'SortOrder': existing.first['SortOrder'],
+          }
+        }),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error updating checklist template item: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Failed to update checklist template item'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  // DELETE /checklist-template/<id>
+  Future<Response> deleteChecklistTemplateItem(Request request, String id) async {
+    try {
+      final itemId = int.tryParse(id);
+      if (itemId == null) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Invalid item ID'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Check item exists
+      final existing = await dbService.query(
+        'SELECT * FROM ChecklistTemplate WHERE Item_ID = ?', [itemId]
+      );
+      if (existing.isEmpty) {
+        return Response.notFound(
+          json.encode({'success': false, 'error': 'Item not found'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      // Check if item is referenced in pre or post rental checklists
+      final preRefs = await dbService.query(
+        'SELECT COUNT(*) as cnt FROM PreRentalChecklist WHERE Item_ID = ?', [itemId]
+      );
+      final postRefs = await dbService.query(
+        'SELECT COUNT(*) as cnt FROM PostRentalChecklist WHERE Item_ID = ?', [itemId]
+      );
+
+      final preCount = preRefs.first['cnt'] as int;
+      final postCount = postRefs.first['cnt'] as int;
+
+      if (preCount > 0 || postCount > 0) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Cannot delete: item is used in existing checklists'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      await dbService.query(
+        'DELETE FROM ChecklistTemplate WHERE Item_ID = ?', [itemId]
+      );
+
+      return Response.ok(
+        json.encode({'success': true, 'message': 'Item deleted successfully'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error deleting checklist template item: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Failed to delete checklist template item'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  // PUT /checklist-template/reorder
+  Future<Response> reorderChecklistTemplate(Request request) async {
+    try {
+      final body = await request.readAsString().then(json.decode);
+      final items = (body['items'] as List?) ?? [];
+
+      if (items.isEmpty) {
+        return Response.badRequest(
+          body: json.encode({'success': false, 'error': 'Items list is required'}),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      for (final item in items) {
+        final itemId = item['Item_ID'] as int?;
+        final sortOrder = item['SortOrder'] as int?;
+        if (itemId == null || sortOrder == null) continue;
+
+        await dbService.query(
+          'UPDATE ChecklistTemplate SET SortOrder = ? WHERE Item_ID = ?',
+          [sortOrder, itemId]
+        );
+      }
+
+      return Response.ok(
+        json.encode({'success': true, 'message': 'Reorder successful'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error reordering checklist template: $e');
+      return Response.internalServerError(
+        body: json.encode({'success': false, 'error': 'Failed to reorder checklist template'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
   // POST /rental-applications/{id}/pre-checklist
   Future<Response> savePreChecklist(Request request, String id) async {
     try {
