@@ -246,8 +246,8 @@ class PartnerHandlers {
         final carResult = await dbService.query(
           '''
           INSERT INTO Cars 
-          (LicensePlate, Seat, Manufacturer, Model, Year, Transmission, FuelType, Status, PricePerDay, ImageURL)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (LicensePlate, Seat, Manufacturer, Model, Year, Transmission, FuelType, Status, PricePerDay, ImageURL, Deposit, Odometer, InspectionDate, InspectionExpiry)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ''',
           [
             body['LicensePlate'],
@@ -257,9 +257,13 @@ class PartnerHandlers {
             body['Year'],
             body['Transmission'],
             body['FuelType'],
-            'Pending',  // Always set status as Pending for user submissions
+            'Pending',
             body['PricePerDay'],
             thumbnailUrl,
+            body['Deposit'] ?? 0,
+            body['Odometer'] ?? 0,
+            body['InspectionDate'],
+            body['InspectionExpiry'],
           ]
         );
 
