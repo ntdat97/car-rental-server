@@ -39,6 +39,7 @@ Router getRootRoutes() {
   protectedRouter.get('/car-partner-registrations', partnerHandlers.getAllPartnerApplications);
   protectedRouter.get('/car-partner-registration/<id>', partnerHandlers.getPartnerApplicationById);
   protectedRouter.put('/car-partner-registration/<id>/status', partnerHandlers.updatePartnerRentalStatus);
+  protectedRouter.put('/cars/<carId>/status', carHandlers.updateCarStatus);
 
   router.mount('/', Pipeline()
     .addMiddleware(authMiddleware)
