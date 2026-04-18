@@ -94,10 +94,16 @@ class RentalHandlers {
         final carId = rental['Car_ID'];
 
         if (newStatus == 'Approved') {
-          // Mark car as Rented
+          // Check if the rental period is current
+          final startDate = DateTime.parse(rental['StartDate'].toString());
+          final endDate = DateTime.parse(rental['EndDate'].toString());
+          final now = DateTime.now();
+          final newCarStatus = (now.isAfter(startDate) && now.isBefore(endDate))
+              ? 'Rented'
+              : 'Available';
           await dbService.query(
-            "UPDATE Cars SET Status = 'Rented' WHERE Car_ID = ?",
-            [carId]
+            'UPDATE Cars SET Status = ? WHERE Car_ID = ?',
+            [newCarStatus, carId]
           );
         } else if (newStatus == 'Active') {
           // Verify pre-checklist exists before allowing transition

@@ -62,6 +62,7 @@ Router getRootRoutes() {
   protectedRouter.get('/car-partner-registrations', partnerHandlers.getAllPartnerApplications);
   protectedRouter.get('/car-partner-registration/<id>', partnerHandlers.getPartnerApplicationById);
   protectedRouter.put('/car-partner-registration/<id>/status', partnerHandlers.updatePartnerRentalStatus);
+  protectedRouter.put('/cars/<carId>/status', carHandlers.updateCarStatus);
 
   // User document routes (self-service)
   protectedRouter.get('/me/documents', userDocumentHandlers.getMyDocuments);

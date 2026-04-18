@@ -3,6 +3,7 @@ import '../services/service_locator.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../auth/auth.dart';
+import '../models/enums.dart';
 
 class CarHandlers {
   final dbService = serviceLocator.databaseService;
@@ -28,10 +29,13 @@ class CarHandlers {
         whereConditions.add('c.Status = ?');
         queryParams.add(params['status']!);
       } else {
-        // By default, exclude Maintenance cars (e.g. Flutter app browsing)
-        // Admin web explicitly passes status or no filter to see all
-        if (params.containsKey('startDate') || !params.containsKey('includeAll')) {
-          whereConditions.add("c.Status != 'Maintenance'");
+        // By default, exclude non-available cars (e.g. Flutter app browsing)
+        // Admin web explicitly passes status or includeAll to see all
+        if (params.containsKey('startDate')) {
+          // When filtering by date, only show Available cars
+          whereConditions.add("c.Status = 'Available'");
+        } else if (!params.containsKey('includeAll')) {
+          whereConditions.add("c.Status NOT IN ('Maintenance', 'Pending', 'Expired', 'Unavailable', 'Rented')");
         }
       }
       if (params.containsKey('manufacturer')) {
@@ -44,6 +48,7 @@ class CarHandlers {
       }
 
       // Date-based availability: exclude cars that have an Approved rental overlapping the requested period
+      // and ensure contract cars have their contract covering the requested period
       final hasDateFilter = params.containsKey('startDate') && params.containsKey('endDate');
 
       var query = 'SELECT c.* FROM cars c';
@@ -55,10 +60,17 @@ class CarHandlers {
             AND saf.Status = 'Approved'
             AND saf.StartDate <= ?
             AND saf.EndDate >= ?
+          LEFT JOIN carrentalregistrationform crf
+            ON c.Car_ID = crf.Car_ID
+            AND crf.Status = 'Approved'
         ''';
         queryParams.insert(0, params['endDate']!);
         queryParams.insert(1, params['startDate']!);
         whereConditions.add('saf.SAF_ID IS NULL');
+        // Admin cars (no contract) are always ok; contract cars must have contract covering the period
+        whereConditions.add('(crf.Car_ID IS NULL OR (crf.StartDateTime <= ? AND crf.EndDateTime >= ?))');
+        queryParams.add(params['startDate']!);
+        queryParams.add(params['endDate']!);
       }
 
       if (whereConditions.isNotEmpty) {
@@ -175,7 +187,9 @@ class CarHandlers {
           body['Year'],
           body['Transmission'],
           body['FuelType'],
-          body['Status'] ?? 'Available',
+          body['Contract_ID'] != null
+              ? CarStatus.Pending.name
+              : (body['Status'] ?? CarStatus.Available.name),
           body['PricePerDay'],
           thumbnailUrl, // Use the compressed thumbnail
           body['Deposit'] ?? 0,
@@ -490,6 +504,57 @@ class CarHandlers {
       print('Error deleting car: $e');
       return Response.internalServerError(
         body: json.encode({'success': false, 'error': 'Error deleting car'}),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    }
+  }
+
+  Future<Response> updateCarStatus(Request request, String carId) async {
+    try {
+      final id = int.tryParse(carId);
+      if (id == null) {
+        return Response.badRequest(
+          body: json.encode({
+            'success': false,
+            'error': 'Invalid car ID format'
+          }),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      final body = await json.decode(await request.readAsString()) as Map<String, dynamic>;
+      final newStatus = body['status'] as String?;
+
+      // Validate status
+      if (newStatus == null || !CarStatus.values.map((e) => e.name).contains(newStatus)) {
+        return Response.badRequest(
+          body: json.encode({
+            'success': false,
+            'error': 'Invalid status value'
+          }),
+          headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+        );
+      }
+
+      await dbService.query(
+        'UPDATE Cars SET Status = ? WHERE Car_ID = ?',
+        [newStatus, id]
+      );
+
+      return Response.ok(
+        json.encode({
+          'success': true,
+          'message': 'Car status updated successfully'
+        }),
+        headers: {HttpHeaders.contentTypeHeader: 'application/json'},
+      );
+    } catch (e) {
+      print('Error updating car status: $e');
+      return Response.internalServerError(
+        body: json.encode({
+          'success': false,
+          'error': 'Failed to update car status'
+        }),
         headers: {HttpHeaders.contentTypeHeader: 'application/json'},
       );
     }
