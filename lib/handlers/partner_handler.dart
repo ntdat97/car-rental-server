@@ -74,7 +74,7 @@ class PartnerHandlers {
 
         // Get user's FCM token
         final tokenResult = await dbService.query(
-            'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ?', [userId]);
+            'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ? ORDER BY Created_At DESC LIMIT 1', [userId]);
 
         if (tokenResult.isNotEmpty) {
           final fcmToken = tokenResult.first['FCM_Token'];

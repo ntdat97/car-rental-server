@@ -28,14 +28,17 @@ class NotificationHandlers {
         );
       }
 
-      // Store token in database
+      // Delete all old tokens for this user, then insert the fresh one.
+      // A user can only have one valid token at a time — when Firebase
+      // refreshes the token the old entries become stale and cause
+      // "FCM token is unregistered" errors.
       await dbService.query(
-        '''
-        INSERT INTO userfcmtokens (User_ID, FCM_Token)
-        VALUES (?, ?)
-        ON DUPLICATE KEY UPDATE FCM_Token = VALUES(FCM_Token)
-        ''',
-        [userId, token]
+        'DELETE FROM userfcmtokens WHERE User_ID = ?',
+        [userId],
+      );
+      await dbService.query(
+        'INSERT INTO userfcmtokens (User_ID, FCM_Token) VALUES (?, ?)',
+        [userId, token],
       );
 
       return Response.ok(

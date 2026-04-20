@@ -236,7 +236,7 @@ class RentalHandlers {
               final conflictUserId = conflict['User_ID'];
               final carName = '${conflict['Manufacturer']} ${conflict['Model']}';
               final tokenResult = await dbService.query(
-                'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ?',
+                'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ? ORDER BY Created_At DESC LIMIT 1',
                 [conflictUserId]
               );
               if (tokenResult.isNotEmpty) {
@@ -267,7 +267,7 @@ class RentalHandlers {
         
         // Get user's FCM token
         final tokenResult = await dbService.query(
-          'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ?',
+          'SELECT FCM_Token FROM userfcmtokens WHERE User_ID = ? ORDER BY Created_At DESC LIMIT 1',
           [userId]
         );
 
